@@ -1,0 +1,72 @@
+<div class="canva-wrapper">
+
+  <!-- Canva -->
+  <iframe
+    loading="lazy"
+    src="https://www.canva.com/design/DAG7MCUMdkM/-osstodlk8EzChb8RRXC4w/view?embed"
+    allowfullscreen
+  ></iframe>
+
+  <!-- ⭐ ВНУТРЕННЯЯ РАМКА СЛЕВА -->
+  <div class="inner-frame">
+    <iframe src="https://unruffled-wing-48a26b.netlify.app/"></iframe>
+  </div>
+
+</div>
+
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
+
+  .canva-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100vh; /* ⭐ НА ВЕСЬ ЭКРАН */
+    border-radius: 0;
+    overflow: hidden;
+    box-shadow: none;
+    background: #000;
+  }
+
+  /* Canva iframe */
+  .canva-wrapper > iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+
+  /* ⭐ Внутренняя рамка */
+  .inner-frame {
+    position: absolute;
+    top: 15%;      /* отступ сверху */
+    left: 8%;     /* отступ слева */
+    width: 35%;   /* ширина рамки */
+    height: 80%;  /* почти вся высота */
+    border-radius: 18px;
+    overflow: hidden;
+    background: white;
+    box-shadow: 0 12px 35px rgba(0,0,0,0.35);
+    z-index: 10;
+  }
+
+  .inner-frame iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+
+  /* Адаптив для телефонов */
+  @media (max-width: 900px) {
+    .inner-frame {
+      width: 90%;
+      height: 45%;
+      left: 5%;
+      top: 50%;
+    }
+  }
+</style>
