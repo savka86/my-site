@@ -74,6 +74,18 @@ async function updateClassTeacherNames(c: {title: string; academic_year: string}
     method: 'PATCH', headers: adminHeaders('return=minimal'), body: JSON.stringify({ teacher_name: name }),
   });
 }
+async function findExistingAuthUser(email: string): Promise<{id: string; email: string} | null> {
+  const target = email.trim().toLowerCase();
+  // Auth admin endpoint is server-only; service key never reaches the browser.
+  for (let page = 1; page <= 20; page++) {
+    const response = await adminRequest(`/auth/v1/admin/users?page=${page}&per_page=200`);
+    const users = Array.isArray(response?.users) ? response.users : [];
+    const found = users.find((u: {email?: string}) => (u.email || '').toLowerCase() === target);
+    if (found?.id && validUuid(found.id)) return { id: found.id, email: target };
+    if (users.length < 200) return null;
+  }
+  throw new Error('Слишком много учётных записей. Обратитесь к администратору проекта');
+}
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (req.method !== 'POST') return json({ error: 'Метод не поддерживается' }, 405);
@@ -104,6 +116,32 @@ Deno.serve(async (req: Request) => {
       }
       return json({ ok: true, message: 'Приглашение создано и отправлено через Supabase Auth', class_title: c.title });
     }
+    if (body.action === 'assign_existing') {
+      if (!validEmail(body.email) || !validName(body.full_name)) {
+        return json({ error: 'Введите ФИО и email существующего учителя' }, 400);
+      }
+      const existing = await findExistingAuthUser(body.email);
+      if (!existing) return json({ error: 'Пользователь с таким email не найден. Используйте отправку приглашения.' }, 404);
+      const rows = await adminRequest(`/rest/v1/school_profiles?select=id,full_name,role,class_id&id=eq.${encodeURIComponent(existing.id)}&limit=1`);
+      if (!Array.isArray(rows)) return json({ error: 'Не удалось проверить профиль педагога' }, 500);
+      const profile = rows[0];
+      if (profile && profile.role !== 'teacher') {
+        return json({ error: 'Этот аккаунт принадлежит завучу или администратору. Его нельзя назначить как учителя.' }, 403);
+      }
+      if (profile?.class_id && profile.class_id !== c.id && body.confirm_reassign !== true) {
+        const prev = await classRecord(profile.class_id);
+        if (prev.title !== c.title || prev.academic_year !== c.academic_year) return json({
+          error: `Педагог уже закреплён за классом ${prev.title}. Переназначить его на ${c.title}?`,
+          needs_confirmation: true,
+          current_class: prev.title,
+          new_class: c.title
+        }, 409);
+      }
+      const name = body.full_name.trim().replace(/\s+/g, ' ');
+      await saveTeacherProfile(existing.id, name, c.id);
+      await updateClassTeacherNames(c, name);
+      return json({ ok: true, existing: true, message: 'Существующему педагогу назначен класс', class_title: c.title });
+    }
     if (body.action === 'assign') {
       if (!validUuid(body.user_id)) return json({ error: 'Неверный идентификатор педагога' }, 400);
       const rows = await adminRequest(`/rest/v1/school_profiles?select=id,full_name,role&id=eq.${encodeURIComponent(body.user_id)}&limit=1`);
@@ -117,7 +155,7 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     // Не возвращаем секреты или технические подробности внешним клиентам.
     const m = errorMessage(err);
-    if (/already|registered|exists|duplicate|already been/i.test(m)) return json({ error: 'Пользователь с этой почтой уже существует. Назначьте ему класс в списке педагогов.' }, 409);
+    if (/already|registered|exists|duplicate|already been/i.test(m)) return json({ error: 'Пользователь уже зарегистрирован. Нажмите «Назначить существующего» — повторное письмо не требуется.', existing_user: true }, 409);
     if (/rate limit|email rate/i.test(m)) return json({ error: 'Превышен лимит отправки приглашений. Повторите позже или настройте SMTP.' }, 429);
     return json({ error: m.slice(0, 280) }, 400);
   }
